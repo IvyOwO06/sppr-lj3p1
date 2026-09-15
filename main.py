@@ -69,7 +69,8 @@ def add_player():
         player_id = 1
 
         for player in players:
-            player_id += 1
+            if player["id"] >= player_id:
+                player_id = player["id"] + 1
 
         print(player_id)
 
@@ -99,6 +100,7 @@ def add_player():
         if again != "y":
             break
 
+
 def delete_player():
     id = int(input("Enter player id to delete: "))
 
@@ -113,6 +115,7 @@ def delete_player():
             return
 
     print(f"No player with id {id} found")
+
 
 def customize_player():
     id = int(input("Enter player id to customize: "))
@@ -133,6 +136,7 @@ def customize_player():
             return
 
     print(f"No player with id {id} found")
+
 
 def find_player():
     id = int(input("Enter player id to find: "))
@@ -155,6 +159,7 @@ def show_leaderboard():
 
     for i, player in enumerate(players, start=1):
         print(f"{i}. {player['username']} - {player['score']}")
+
 
 if __name__ == "__main__":
     while True:
