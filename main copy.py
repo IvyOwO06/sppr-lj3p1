@@ -1,11 +1,17 @@
 from player_class import player
 import json
 from fastapi import FastAPI, HTTPException
-from fastapi.params import Body
+from fastapi.params import Body, Header
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 app = FastAPI()
+
+api_key = os.getenv('API_KEY')
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,19 +70,24 @@ def get_leaderboard():
 
     return sorted_players
 
-@app.post("/add/player")
+@app.post("/players/add")
 def post_player(added_player: dict = Body (...)):
-    while True:
+    # if added_player_header['API_KEY'] == api_key:
+        username = added_player['username']
+        score = added_player['score']
+        add_player_func(username, score)
+    # else:
+    #     raise HTTPException(status_code=401, detail="INVALID API KEY")
+
+def add_player_func(username, score):
+    
             player_id = 1
     
             for player in players:
                 if player["id"] >= player_id:
                     player_id = player["id"] + 1
     
-            print(player_id)
-    
-            username = added_player['username']
-            score = added_player['score']
+            # print(player_id)
     
             new_player = {"id": player_id, "username": username, "score": score}
     
@@ -89,32 +100,14 @@ def post_player(added_player: dict = Body (...)):
                 file.truncate()
     
             players.append(new_player)
-            return f"Player {new_player['username']} added with id {new_player['id']} and score {new_player['score']}"
+            return new_player
 
 def add_player():
     while True:
-        player_id = 1
+        username = input("Enter username: ")
+        score = input("Enter score:")
 
-        for player in players:
-            if player["id"] >= player_id:
-                player_id = player["id"] + 1
-
-        print(player_id)
-
-        username = input("Enter player username: ")
-        score = int(input("Enter player score: "))
-
-        new_player = {"id": player_id, "username": username, "score": score}
-
-        with open("players.json", "r+") as file:
-            data = json.load(file)
-            data["players"].append(new_player)
-
-            file.seek(0)
-            json.dump(data, file, indent=4)
-            file.truncate()
-
-        players.append(new_player)
+        add_player_func(username, score)
 
         print(
             f"Player {new_player['username']} "
