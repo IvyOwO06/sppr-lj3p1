@@ -2,7 +2,7 @@ from player_class import player
 import json
 from fastapi import FastAPI, HTTPException
 from fastapi.params import Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -15,12 +15,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# class Player(BaseModel):
+#     id: int = Field(gt=0)
+#     username: str = Field(min_length=1)
+#     score: int = Field(ge=0)
 
-class Player(BaseModel):
-    id: int
-    username: str
-    score: int
+class PlayerCreate(BaseModel):
+    username: str = Field(min_length=1)
+    score: int = Field(ge=0)
 
+class Score(BaseModel):
+    score: int = Field(gt=0)
+
+class PlayerEdit(BaseModel):
+    username: str = Field(min_length=1)
+    score: int = Field(ge=0)
+
+class PlayerDelete(BaseModel):
+    id: int = Field(ge=0)
 
 menu = {}
 players = json.load(open("players.json", "r"))["players"]
@@ -65,53 +77,62 @@ def get_leaderboard():
     return sorted_players
 
 @app.post("/players/add")
-def post_player(added_player: dict = Body (...)):
-    while True:
-            player_id = 1
-    
-            for player in players:
-                if player["id"] >= player_id:
-                    player_id = player["id"] + 1
-    
-            print(player_id)
-    
-            username = added_player['username']
-            score = added_player['score']
-    
-            new_player = {"id": player_id, "username": username, "score": score}
-    
-            with open("players.json", "r+") as file:
-                data = json.load(file)
-                data["players"].append(new_player)
-    
-                file.seek(0)
-                json.dump(data, file, indent=4)
-                file.truncate()
-    
-            players.append(new_player)
-            return f"Player {new_player['username']} added with id {new_player['id']} and score {new_player['score']}"
+def post_player(added_player: PlayerCreate):
+    player_id = 1
 
-@app.patch("/players/edit")
-def edit_player(edited_player : dict = Body (...)):
-    id = edited_player['id']
     for player in players:
-        if player['id'] == id:
-            player['username'] = edited_player['username']
-            player['score'] = edited_player['score']
+        if player["id"] >= player_id:
+            player_id = player["id"] + 1
+
+    new_player = {
+        "id": player_id,
+        "username": added_player.username,
+        "score": added_player.score
+    }
+
+    with open("players.json", "r+") as file:
+        data = json.load(file)
+        data["players"].append(new_player)
+
+        file.seek(0)
+        json.dump(data, file, indent=4)
+        file.truncate()
+
+    players.append(new_player)
+
+    return new_player
+
+@app.patch("/players/edit/{id}")
+def edit_player(id: int, edited_player: PlayerEdit):
+    for player in players:
+        if player["id"] == id:
+            player["username"] = edited_player.username
+            player["score"] = edited_player.score
 
             with open("players.json", "w") as file:
                 json.dump({"players": players}, file, indent=4)
 
-            return(
-                f"Player with id {id} customized to username {player['username']} and score {player['score']}"
-            )
+            return player
+
+    raise HTTPException(status_code=404, detail="Player not found")
+
+@app.patch("/players/{id}/score")
+def add_score(id: int, score_data: Score):
+    for player in players:
+        if player["id"] == id:
+            player["score"] += score_data.score
+
+            with open("players.json", "w") as file:
+                json.dump({"players": players}, file, indent=4)
+
+            return player
+
+    raise HTTPException(status_code=404, detail="Player not found")
 
 @app.delete("/players/delete")
-def delete_player(deleted_player: dict = Body (...)):
-    id = deleted_player['id']
-
+def delete_player(id: int):
     for player in players:
-        if player['id'] == deleted_player['id']:
+        if player['id'] == id:
             players.remove(player)
 
             with open("players.json", "w") as file:
