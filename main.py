@@ -91,6 +91,36 @@ def post_player(added_player: dict = Body (...)):
             players.append(new_player)
             return f"Player {new_player['username']} added with id {new_player['id']} and score {new_player['score']}"
 
+@app.patch("/players/edit")
+def edit_player(edited_player : dict = Body (...)):
+    id = edited_player['id']
+    for player in players:
+        if player['id'] == id:
+            player['username'] = edited_player['username']
+            player['score'] = edited_player['score']
+
+            with open("players.json", "w") as file:
+                json.dump({"players": players}, file, indent=4)
+
+            return(
+                f"Player with id {id} customized to username {player['username']} and score {player['score']}"
+            )
+
+@app.delete("/players/delete")
+def delete_player(deleted_player: dict = Body (...)):
+    id = deleted_player['id']
+
+    for player in players:
+        if player['id'] == deleted_player['id']:
+            players.remove(player)
+
+            with open("players.json", "w") as file:
+                json.dump({"players": players}, file, indent=4)
+
+            return f"Player with id {id} deleted"
+        
+    return f"No player with id {id} found"
+
 def add_player():
     while True:
         player_id = 1
