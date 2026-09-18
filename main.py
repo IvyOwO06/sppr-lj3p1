@@ -64,7 +64,7 @@ def get_leaderboard():
 
     return sorted_players
 
-@app.post("/add/player")
+@app.post("/players/add")
 def post_player(added_player: dict = Body (...)):
     while True:
             player_id = 1
