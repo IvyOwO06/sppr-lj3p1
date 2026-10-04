@@ -1,9 +1,20 @@
-from player_class import player
-import json
-from fastapi import FastAPI, HTTPException
-from fastapi.params import Body
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
+
+from database import engine, Base, SessionLocal
+from sqlalchemy.orm import Session
+import models
+
+Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+
+    try:
+        yield db
+    finally:
+        db.close()
 
 app = FastAPI()
 
@@ -22,241 +33,163 @@ app.add_middleware(
 
 class PlayerCreate(BaseModel):
     username: str = Field(min_length=1)
-    score: int = Field(ge=0)
 
 class Score(BaseModel):
     score: int = Field(gt=0)
 
 class PlayerEdit(BaseModel):
     username: str = Field(min_length=1)
-    score: int = Field(ge=0)
 
-class PlayerDelete(BaseModel):
-    id: int = Field(ge=0)
-
-menu = {}
-players = json.load(open("players.json", "r"))["players"]
-
-menu["1"] = "Add Player"
-menu["2"] = "Delete Player"
-menu["3"] = "Customize Player"
-menu["4"] = "Find Player"
-menu["5"] = "Show Leaderboard"
-menu["6"] = "Exit"
-
+@app.get("/")
+def root():
+    return "Welcome to the Python api"
 
 @app.get("/players")
-def get_players():
-    with open("players.json", "r") as file:
-        data = json.load(file)
-
-        return data["players"]
+def get_players(db: Session = Depends(get_db)):
+    return db.query(models.Player).all()
 
 
 @app.get("/players/{id}")
-def get_player(id: str):
-    with open("players.json", "r") as file:
-        data = json.load(file)
+def get_player(id: int, db: Session = Depends(get_db)):
+    player = db.query(models.Player).filter(
+        models.Player.id == id
+    ).first()
 
-    for player in data["players"]:
-        if player["id"] == int(id):
-            return player
+    if player is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
+        )
 
-    raise HTTPException(status_code=404, detail="Player not found")
+    return player
 
 
 @app.get("/leaderboard")
-def get_leaderboard():
-    with open("players.json", "r") as file:
-        data = json.load(file)
+def get_leaderboard(db: Session = Depends(get_db)):
+    players = db.query(models.Player).all()
 
-    sorted_players = sorted(
-        data["players"], key=lambda p: int(p["score"]), reverse=True
+    players.sort(
+        key=lambda player: player.scores[-1].score if player.scores else 0,
+        reverse=True
     )
 
-    return sorted_players
+    return players
 
 @app.post("/players/add")
-def post_player(added_player: PlayerCreate):
-    player_id = 1
+def create_player(player_data: PlayerCreate, db: Session = Depends(get_db)):
+    new_player = models.Player(
+        username=player_data.username
+    )
 
-    for player in players:
-        if player["id"] >= player_id:
-            player_id = player["id"] + 1
-
-    new_player = {
-        "id": player_id,
-        "username": added_player.username,
-        "score": added_player.score
-    }
-
-    with open("players.json", "r+") as file:
-        data = json.load(file)
-        data["players"].append(new_player)
-
-        file.seek(0)
-        json.dump(data, file, indent=4)
-        file.truncate()
-
-    players.append(new_player)
+    db.add(new_player)
+    db.commit()
+    db.refresh(new_player)
 
     return new_player
 
 @app.patch("/players/edit/{id}")
-def edit_player(id: int, edited_player: PlayerEdit):
-    for player in players:
-        if player["id"] == id:
-            player["username"] = edited_player.username
-            player["score"] = edited_player.score
+def edit_player(
+    id: int,
+    edited_player: PlayerEdit,
+    db: Session = Depends(get_db)
+):
+    player = db.query(models.Player).filter(
+        models.Player.id == id
+    ).first()
 
-            with open("players.json", "w") as file:
-                json.dump({"players": players}, file, indent=4)
-
-            return player
-
-    raise HTTPException(status_code=404, detail="Player not found")
-
-@app.patch("/players/{id}/score")
-def add_score(id: int, score_data: Score):
-    for player in players:
-        if player["id"] == id:
-            player["score"] += score_data.score
-
-            with open("players.json", "w") as file:
-                json.dump({"players": players}, file, indent=4)
-
-            return player
-
-    raise HTTPException(status_code=404, detail="Player not found")
-
-@app.delete("/players/delete")
-def delete_player(id: int):
-    for player in players:
-        if player['id'] == id:
-            players.remove(player)
-
-            with open("players.json", "w") as file:
-                json.dump({"players": players}, file, indent=4)
-
-            return f"Player with id {id} deleted"
-        
-    return f"No player with id {id} found"
-
-def add_player():
-    while True:
-        player_id = 1
-
-        for player in players:
-            if player["id"] >= player_id:
-                player_id = player["id"] + 1
-
-        print(player_id)
-
-        username = input("Enter player username: ")
-        score = int(input("Enter player score: "))
-
-        new_player = {"id": player_id, "username": username, "score": score}
-
-        with open("players.json", "r+") as file:
-            data = json.load(file)
-            data["players"].append(new_player)
-
-            file.seek(0)
-            json.dump(data, file, indent=4)
-            file.truncate()
-
-        players.append(new_player)
-
-        print(
-            f"Player {new_player['username']} "
-            f"added with id {new_player['id']} "
-            f"and score {new_player['score']}"
+    if player is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
         )
 
-        again = input("Do you want to add another player? (y/n): ").strip().lower()
+    player.username = edited_player.username
 
-        if again != "y":
-            break
+    db.commit()
+    db.refresh(player)
 
+    return player
 
-def delete_player():
-    id = int(input("Enter player id to delete: "))
+@app.post("/players/{id}/scores")
+def add_score(
+    id: int,
+    score_data: Score,
+    db: Session = Depends(get_db)
+):
+    player = db.query(models.Player).filter(
+        models.Player.id == id
+    ).first()
 
-    for player in players:
-        if player["id"] == id:
-            players.remove(player)
-
-            with open("players.json", "w") as file:
-                json.dump({"players": players}, file, indent=4)
-
-            print(f"Player with id {id} deleted")
-            return
-
-    print(f"No player with id {id} found")
-
-
-def customize_player():
-    id = int(input("Enter player id to customize: "))
-
-    for player in players:
-        if player["id"] == id:
-            player["username"] = input("Enter new player username: ")
-            player["score"] = int(input("Enter new player score: "))
-
-            with open("players.json", "w") as file:
-                json.dump({"players": players}, file, indent=4)
-
-            print(
-                f"Player with id {id} customized to "
-                f"username {player['username']} "
-                f"and score {player['score']}"
-            )
-            return
-
-    print(f"No player with id {id} found")
-
-
-def find_player():
-    id = int(input("Enter player id to find: "))
-    for player in players:
-        if player["id"] == id:
-            print(id)
-            selected_player = player
-    if selected_player is None:
-        print(f"No player with id {id} found")
-    else:
-        print(
-            f"Player {selected_player['username']} has id {selected_player['id']} and score {selected_player['score']}"
+    if player is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
         )
 
+    new_score = models.Score(
+        score=score_data.score,
+        player_id=id
+    )
 
-def show_leaderboard():
-    players.sort(key=lambda p: int(p["score"]), reverse=True)
+    db.add(new_score)
+    db.commit()
+    db.refresh(new_score)
 
-    print("Leaderboard:")
+    return new_score
 
-    for i, player in enumerate(players, start=1):
-        print(f"{i}. {player['username']} - {player['score']}")
+@app.delete("/players/{id}")
+def delete_player(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    player = db.query(models.Player).filter(
+        models.Player.id == id
+    ).first()
 
+    if player is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
+        )
 
-if __name__ == "__main__":
-    while True:
-        options = sorted(menu.keys())
+    db.delete(player)
+    db.commit()
 
-        for entry in options:
-            print(entry, menu[entry])
-        selection = input("Please select: ")
-        if selection == "1":
-            add_player()
-        elif selection == "2":
-            delete_player()
-        elif selection == "3":
-            customize_player()
-        elif selection == "4":
-            find_player()
-        elif selection == "5":
-            show_leaderboard()
-        elif selection == "6":
-            break
-        else:
-            print("Unknown option selected")
+    return f"Player with id {id} deleted"
+
+@app.delete("/scores/{id}")
+def delete_score(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    score = db.query(models.Score).filter(
+        models.Score.id == id
+    ).first()
+
+    if score is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Score not found"
+        )
+
+    db.delete(score)
+    db.commit()
+
+    return f"Score with id {id} deleted"
+
+@app.get("/players/{id}/scores")
+def get_scores(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    player = db.query(models.Player).filter(
+        models.Player.id == id
+    ).first()
+
+    if player is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
+        )
+
+    return player.scores
