@@ -22,6 +22,17 @@ def get_db():
 def get_players(db: Session = Depends(get_db)):
     return db.query(models.Player).all()
 
+@router.get("/leaderboard")
+def get_leaderboard(db: Session = Depends(get_db)):
+    players = db.query(models.Player).all()
+
+    players.sort(
+        key=lambda player: player.scores[-1].score if player.scores else 0,
+        reverse=True
+    )
+
+    return players
+
 @router.get("/{id}")
 def get_player(
     id: int,
@@ -38,17 +49,6 @@ def get_player(
         )
     
     return player
-
-@router.get("/leaderboard")
-def get_leaderboard(db: Session = Depends(get_db)):
-    players = db.query(models.Player).all()
-
-    players.sort(
-        key=lambda player: player.scores[-1].scoere if player.scores else 0,
-        reverse=True
-    )
-
-    return players
 
 @router.post("/add")
 def create_player(
